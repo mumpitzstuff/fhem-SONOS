@@ -234,7 +234,7 @@ my $SONOS_Thread_IsAlive :shared = -1;
 my $SONOS_Thread_PlayerRestore :shared = -1;
 
 my %SONOS_Thread_IsAlive_Counter;
-my $SONOS_Thread_IsAlive_Counter_MaxMerci = 10;
+my $SONOS_Thread_IsAlive_Counter_MaxMerci = 9;
 
 # Runtime Variables on Module-Level
 my %SONOS_Module_BulkUpdateFromSubProcessInWork;

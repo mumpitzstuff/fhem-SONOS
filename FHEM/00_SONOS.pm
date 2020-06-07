@@ -234,7 +234,7 @@ my $SONOS_Thread_IsAlive :shared = -1;
 my $SONOS_Thread_PlayerRestore :shared = -1;
 
 my %SONOS_Thread_IsAlive_Counter;
-my $SONOS_Thread_IsAlive_Counter_MaxMerci = 9;
+my $SONOS_Thread_IsAlive_Counter_MaxMerci = 2;
 
 # Runtime Variables on Module-Level
 my %SONOS_Module_BulkUpdateFromSubProcessInWork;
@@ -6447,7 +6447,9 @@ sub SONOS_IsAlive($) {
 
     my $ping = Net::Ping->new($pingType, 1);
     $ping->source_verify(0); # Es ist egal, von welcher Schnittstelle des Zielsystems die Antwort kommt
-    $ping->port_number($port) if (lc($pingType) eq 'tcp'); # Wenn TCP verwendet werden soll, dann auf HTTP-Port des Location-Documents (Standard: 1400) des Player verbinden
+    $ping->port_number($port) if ((lc($pingType) eq 'tcp') || (lc($pingType) eq 'syn')); # Wenn TCP oder SYN verwendet werden soll, dann auf HTTP-Port des Location-Documents (Standard: 1400) des Player verbinden
+    $ping->ping($host) if (lc($pingType) eq 'syn');
+
     if (((lc($pingType) eq 'syn') && $ping->ack($host)) ||
         ((lc($pingType) ne 'syn') && $ping->ping($host))) {
       # Alive

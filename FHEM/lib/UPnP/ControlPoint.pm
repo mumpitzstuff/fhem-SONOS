@@ -55,415 +55,415 @@ our $EnvPrefix;
 our $EnvNamespace;
 
 sub isIgnoreIP($) {
-	my($ip) = @_;
-	
-	foreach my $elem (@IGNOREIP) {
-		if ($elem =~ m/^\/(.*)\/$/) {
-			if ($ip =~ m/^$1$/) {
-				return 1;
-			}
-		} else {
-			if ($ip eq $elem) {
-				return 1;
-			}
-		}
-	}
-	
-	return 0;
+  my($ip) = @_;
+
+  foreach my $elem (@IGNOREIP) {
+    if ($elem =~ m/^\/(.*)\/$/) {
+      if ($ip =~ m/^$1$/) {
+        return 1;
+      }
+    } else {
+      if ($ip eq $elem) {
+        return 1;
+      }
+    }
+  }
+
+  return 0;
 }
 
 sub isUsedOnlyIP($) {
-	my($ip) = @_;
-	
-	return 1 if (!scalar(@USEDONLYIP));
-	
-	foreach my $elem (@USEDONLYIP) {
-		if ($elem =~ m/^\/(.*)\/$/) {
-			if ($ip =~ m/^$1$/) {
-				return 1;
-			}
-		} else {
-			if ($ip eq $elem) {
-				return 1;
-			}
-		}
-	}
-	
-	return 0;
+  my($ip) = @_;
+
+  return 1 if (!scalar(@USEDONLYIP));
+
+  foreach my $elem (@USEDONLYIP) {
+    if ($elem =~ m/^\/(.*)\/$/) {
+      if ($ip =~ m/^$1$/) {
+        return 1;
+      }
+    } else {
+      if ($ip eq $elem) {
+        return 1;
+      }
+    }
+  }
+
+  return 0;
 }
 
 sub new {
   my($self, %args) = @_;
-	my $class = ref($self) || $self;
+  my $class = ref($self) || $self;
 
   $self = $class->SUPER::new(%args);
 
   my $searchPort = defined($args{SearchPort}) ? $args{SearchPort} : DEFAULT_SSDP_SEARCH_PORT;
   my $subscriptionPort = defined($args{SubscriptionPort}) ? $args{SubscriptionPort} : DEFAULT_SUBSCRIPTION_PORT;
-	my $maxWait = $args{MaxWait} || 3;
-	@IGNOREIP = @{$args{IgnoreIP}};
-	@USEDONLYIP = @{$args{UsedOnlyIP}};
-	$LogLevel = $args{LogLevel} || 0;
-	$EnvPrefix = $args{EnvPrefix} || $SOAP::Constants::PREFIX_ENV;
-	$EnvNamespace = $args{EnvNamespace} || 'u';
-	
-	my $reuseport = $args{ReusePort};
-	$reuseport = 0 if (!defined($reuseport));
+  my $maxWait = $args{MaxWait} || 3;
+  @IGNOREIP = @{$args{IgnoreIP}};
+  @USEDONLYIP = @{$args{UsedOnlyIP}};
+  $LogLevel = $args{LogLevel} || 0;
+  $EnvPrefix = $args{EnvPrefix} || $SOAP::Constants::PREFIX_ENV;
+  $EnvNamespace = $args{EnvNamespace} || 'u';
 
-	# Create the socket on which search requests go out
+  my $reuseport = $args{ReusePort};
+  $reuseport = 0 if (!defined($reuseport));
+
+  # Create the socket on which search requests go out
   $self->{_searchSocket} = IO::Socket::INET->new(Proto => 'udp',
                                                  Reuse => 1,
                                                  ReuseAddr => 1,
-                                                 ReusePort => (defined(&ReusePort) ? 1 : 0),  
+                                                 ReusePort => (defined(&ReusePort) ? 1 : 0),
                                                  LocalPort => $searchPort) || carp("Error creating search socket: $!\n");
-	setsockopt($self->{_searchSocket}, 
-			       IP_LEVEL,
-			       IP_MULTICAST_TTL,
-			       pack 'I', 4);
+  setsockopt($self->{_searchSocket},
+             IP_LEVEL,
+             IP_MULTICAST_TTL,
+             pack 'I', 4);
   $self->{_maxWait} = $maxWait;
 
-	# Create the socket on which we'll listen for events to which we are
-	# subscribed.
-  $self->{_subscriptionSocket} = HTTP::Daemon->new(LocalPort => $subscriptionPort, 
+  # Create the socket on which we'll listen for events to which we are
+  # subscribed.
+  $self->{_subscriptionSocket} = HTTP::Daemon->new(LocalPort => $subscriptionPort,
                                                    Reuse => 1,
                                                    ReuseAddr => 1,
                                                    ReusePort => (defined(&ReusePort) ? 1 : 0),
                                                    Listen => 20) || carp("Error creating subscription socket: $!\n");
-	$self->{_subscriptionURL} = $args{SubscriptionURL} || DEFAULT_SUBSCRIPTION_URL;
-	$self->{_subscriptionPort} = $self->{_subscriptionSocket}->sockport();
+  $self->{_subscriptionURL} = $args{SubscriptionURL} || DEFAULT_SUBSCRIPTION_URL;
+  $self->{_subscriptionPort} = $self->{_subscriptionSocket}->sockport();
 
-	# Create the socket on which we'll listen for SSDP Notifications.
-	# First try with ReusePort (if given as parameter)...
-	eval {
-		$self->{_ssdpMulticastSocket} = IO::Socket::INET->new(
-														 Proto => 'udp',
-														 Reuse => 1,
+  # Create the socket on which we'll listen for SSDP Notifications.
+  # First try with ReusePort (if given as parameter)...
+  eval {
+    $self->{_ssdpMulticastSocket} = IO::Socket::INET->new(
+                             Proto => 'udp',
+                             Reuse => 1,
                              ReuseAddr => 1,
-														 ReusePort => (defined(&ReusePort) ? 1 : 0),
-														 LocalPort => SSDP_PORT) ||
-		croak("Error creating SSDP multicast listen socket (1): $!\n");
-	};
-	if ($@ =~ /Your vendor has not defined Socket macro/i) {
-		$self->{_ssdpMulticastSocket} = IO::Socket::INET->new(
-														 Proto => 'udp',
-														 Reuse => 1,
+                             ReusePort => (defined(&ReusePort) ? 1 : 0),
+                             LocalPort => SSDP_PORT) ||
+    croak("Error creating SSDP multicast listen socket (1): $!\n");
+  };
+  if ($@ =~ /Your vendor has not defined Socket macro/i) {
+    $self->{_ssdpMulticastSocket} = IO::Socket::INET->new(
+                             Proto => 'udp',
+                             Reuse => 1,
                              ReuseAddr => 1,
-														 LocalPort => SSDP_PORT) ||
-		croak("Error creating SSDP multicast listen socket (2): $!\n");
-	} elsif($@) {
-		# Weiterwerfen...
-		croak($@);
-	}
-	
-	my $ip_mreq = inet_aton(SSDP_IP) . INADDR_ANY;
-	setsockopt($self->{_ssdpMulticastSocket}, 
-			       IP_LEVEL,
-			       IP_ADD_MEMBERSHIP,
-			       $ip_mreq);
-	setsockopt($self->{_ssdpMulticastSocket}, 
-			       IP_LEVEL,
-			       IP_MULTICAST_TTL,
-			       pack 'I', 4);
+                             LocalPort => SSDP_PORT) ||
+    croak("Error creating SSDP multicast listen socket (2): $!\n");
+  } elsif($@) {
+    # Weiterwerfen...
+    croak($@);
+  }
 
-	return $self;
+  my $ip_mreq = inet_aton(SSDP_IP) . INADDR_ANY;
+  setsockopt($self->{_ssdpMulticastSocket},
+             IP_LEVEL,
+             IP_ADD_MEMBERSHIP,
+             $ip_mreq);
+  setsockopt($self->{_ssdpMulticastSocket},
+             IP_LEVEL,
+             IP_MULTICAST_TTL,
+             pack 'I', 4);
+
+  return $self;
 }
 
 sub DESTROY {
-	my $self = shift;
+  my $self = shift;
 
-	for my $subscription (values %{$self->{_subscriptions}}) {
-		if ($subscription) {
-			$subscription->unsubscribe;
-		}
-	}
+  for my $subscription (values %{$self->{_subscriptions}}) {
+    if ($subscription) {
+      $subscription->unsubscribe;
+    }
+  }
 }
 
 sub searchByType {
-	my $self = shift;
-	my $type = shift;
-	my $callback = shift;
+  my $self = shift;
+  my $type = shift;
+  my $callback = shift;
 
-	my $search = UPnP::ControlPoint::Search->new(Callback => $callback,
-												 Type => $type);
-	$self->{_activeSearches}->{$search} = $search;
-	$self->_startSearch($type);
-	return $search;
+  my $search = UPnP::ControlPoint::Search->new(Callback => $callback,
+                         Type => $type);
+  $self->{_activeSearches}->{$search} = $search;
+  $self->_startSearch($type);
+  return $search;
 }
 
 sub searchByUDN {
-	my $self = shift;
-	my $udn = shift;
-	my $callback = shift;
+  my $self = shift;
+  my $udn = shift;
+  my $callback = shift;
 
-	my $search = UPnP::ControlPoint::Search->new(Callback => $callback,
-												 UDN => $udn);
-	$self->{_activeSearches}->{$search} = $search;
-	$self->_startSearch("upnp:rootdevice");
-	$search;
+  my $search = UPnP::ControlPoint::Search->new(Callback => $callback,
+                         UDN => $udn);
+  $self->{_activeSearches}->{$search} = $search;
+  $self->_startSearch("upnp:rootdevice");
+  $search;
 }
 
 sub searchByFriendlyName {
-	my $self = shift;
-	my $name = shift;
-	my $callback = shift;
+  my $self = shift;
+  my $name = shift;
+  my $callback = shift;
 
-	my $search = UPnP::ControlPoint::Search->new(Callback => $callback,
-												 FriendlyName => $name);
-	$self->{_activeSearches}->{$search} = $search;
-	$self->_startSearch("upnp:rootdevice");
-	$search;
+  my $search = UPnP::ControlPoint::Search->new(Callback => $callback,
+                         FriendlyName => $name);
+  $self->{_activeSearches}->{$search} = $search;
+  $self->_startSearch("upnp:rootdevice");
+  $search;
 }
 
 sub stopSearch {
-	my $self = shift;
-	my $search = shift;
+  my $self = shift;
+  my $search = shift;
 
-	delete $self->{_activeSearches}->{$search};
+  delete $self->{_activeSearches}->{$search};
 }
 
 sub sockets {
-	my $self = shift;
+  my $self = shift;
 
-	return ($self->{_subscriptionSocket},
-			$self->{_ssdpMulticastSocket},
-			$self->{_searchSocket},);
+  return ($self->{_subscriptionSocket},
+      $self->{_ssdpMulticastSocket},
+      $self->{_searchSocket},);
 }
 
 sub handleOnce {
-	my $self = shift;
-	my $socket = shift;
-	
-	if ($socket == $self->{_searchSocket}) {
-		$self->_receiveSearchResponse($socket);
-	}
-	elsif ($socket == $self->{_ssdpMulticastSocket}) {
-		$self->_receiveSSDPEvent($socket);
-	}
-	elsif ($socket == $self->{_subscriptionSocket}) {
-		if (my $connect = $socket->accept()) {
-			return if (!isUsedOnlyIP($connect->peerhost()));
-			return if (isIgnoreIP($connect->peerhost()));
-			$self->_receiveSubscriptionNotification($connect);
-		}
-	}
+  my $self = shift;
+  my $socket = shift;
+
+  if ($socket == $self->{_searchSocket}) {
+    $self->_receiveSearchResponse($socket);
+  }
+  elsif ($socket == $self->{_ssdpMulticastSocket}) {
+    $self->_receiveSSDPEvent($socket);
+  }
+  elsif ($socket == $self->{_subscriptionSocket}) {
+    if (my $connect = $socket->accept()) {
+      return if (!isUsedOnlyIP($connect->peerhost()));
+      return if (isIgnoreIP($connect->peerhost()));
+      $self->_receiveSubscriptionNotification($connect);
+    }
+  }
 }
 
 sub handle {
-	my $self = shift;
-	my @mysockets = $self->sockets();
-	my $select = IO::Select->new(@mysockets);
+  my $self = shift;
+  my @mysockets = $self->sockets();
+  my $select = IO::Select->new(@mysockets);
 
-	$self->{_handling} = 1;
-	while ($self->{_handling}) {
-		my @sockets = $select->can_read(1);
-		for my $sock (@sockets) {
-			$self->handleOnce($sock);
-		}
-	}
+  $self->{_handling} = 1;
+  while ($self->{_handling}) {
+    my @sockets = $select->can_read(1);
+    for my $sock (@sockets) {
+      $self->handleOnce($sock);
+    }
+  }
 }
 
 sub stopHandling {
-	my $self = shift;
-	$self->{_handling} = 0;
+  my $self = shift;
+  $self->{_handling} = 0;
 }
 
 sub subscriptionURL {
-	my $self = shift;
-	return URI->new_abs($self->{_subscriptionURL},
-						'http://' . UPnP::Common::getLocalIP() . ':' .
-						$self->{_subscriptionPort});
+  my $self = shift;
+  return URI->new_abs($self->{_subscriptionURL},
+            'http://' . UPnP::Common::getLocalIP() . ':' .
+            $self->{_subscriptionPort});
 }
 
 sub addSubscription {
-	my $self = shift;
-	my $subscription = shift;
+  my $self = shift;
+  my $subscription = shift;
 
-	$self->{_subscriptions}->{$subscription->SID} = $subscription;
+  $self->{_subscriptions}->{$subscription->SID} = $subscription;
 }
 
 sub removeSubscription {
-	my $self = shift;
-	my $subscription = shift;
+  my $self = shift;
+  my $subscription = shift;
 
-	delete $self->{_subscriptions}->{$subscription->SID};
+  delete $self->{_subscriptions}->{$subscription->SID};
 }
 
 sub _startSearch {
-	my $self = shift;
-	my $target = shift;
+  my $self = shift;
+  my $target = shift;
 
-	my $header = 'M-SEARCH * HTTP/1.1' . CRLF .
-		'HOST: ' . SSDP_IP . ':' . SSDP_PORT . CRLF .
-		'MAN: "ssdp:discover"' . CRLF .
-		'ST: ' . $target . CRLF .
-		'MX: ' . $self->{_maxWait} . CRLF .
-		CRLF;
+  my $header = 'M-SEARCH * HTTP/1.1' . CRLF .
+    'HOST: ' . SSDP_IP . ':' . SSDP_PORT . CRLF .
+    'MAN: "ssdp:discover"' . CRLF .
+    'ST: ' . $target . CRLF .
+    'MX: ' . $self->{_maxWait} . CRLF .
+    CRLF;
 
-	my $destaddr = sockaddr_in(SSDP_PORT, inet_aton(SSDP_IP));
-	send($self->{_searchSocket}, $header, 0, $destaddr);
+  my $destaddr = sockaddr_in(SSDP_PORT, inet_aton(SSDP_IP));
+  send($self->{_searchSocket}, $header, 0, $destaddr);
 }
 
 sub _parseUSNHeader {
-	my $usn = shift;
+  my $usn = shift;
 
-	my ($udn, $deviceType, $serviceType);
+  my ($udn, $deviceType, $serviceType);
 
-	if ($usn =~ /^uuid:schemas(.*?):device(.*?):(.*?):(.+)$/) {
-		$udn = 'uuid:' . $4;
-		$deviceType = 'urn:schemas' . $1 . ':device' . $2 . ':' . $3;
-	}
-	elsif ($usn =~ /^uuid:(.+?)::/) {
-		$udn = 'uuid:' . $1;
-		if ($usn =~ /urn:(.+)$/) {
-			my $urn = $1;
-			if ($usn =~ /:service:/) {
-				$serviceType = 'urn:' . $urn;
-			}
-			elsif ($usn =~ /:device:/) {
-				$deviceType = 'urn:' . $urn;
-			}
-		}
-	}
-	else {
-		$udn = $usn;
-	}
+  if ($usn =~ /^uuid:schemas(.*?):device(.*?):(.*?):(.+)$/) {
+    $udn = 'uuid:' . $4;
+    $deviceType = 'urn:schemas' . $1 . ':device' . $2 . ':' . $3;
+  }
+  elsif ($usn =~ /^uuid:(.+?)::/) {
+    $udn = 'uuid:' . $1;
+    if ($usn =~ /urn:(.+)$/) {
+      my $urn = $1;
+      if ($usn =~ /:service:/) {
+        $serviceType = 'urn:' . $urn;
+      }
+      elsif ($usn =~ /:device:/) {
+        $deviceType = 'urn:' . $urn;
+      }
+    }
+  }
+  else {
+    $udn = $usn;
+  }
 
-	return ($udn, $deviceType, $serviceType);
+  return ($udn, $deviceType, $serviceType);
 }
 
 sub _firstLocation {
-	my $headers = shift;
-	my $location = $headers->header('Location');
-	
-	return $location if $location;
+  my $headers = shift;
+  my $location = $headers->header('Location');
 
-	my $al = $headers->header('AL');
-	if ($al && $al =~ /^<(\S+?)>/) {
-		return $1;
-	}
+  return $location if $location;
 
-	return undef;
+  my $al = $headers->header('AL');
+  if ($al && $al =~ /^<(\S+?)>/) {
+    return $1;
+  }
+
+  return undef;
 }
 
 sub newService {
-	my $self = shift;
+  my $self = shift;
 
-	return UPnP::ControlPoint::Service->new(@_);
+  return UPnP::ControlPoint::Service->new(@_);
 }
 
 sub newDevice {
-	my $self = shift;
+  my $self = shift;
 
-	return UPnP::ControlPoint::Device->new(@_);
+  return UPnP::ControlPoint::Device->new(@_);
 }
 
 sub _createDevice {
-	my $self = shift;
-	my $location = shift;
-	my $device;
+  my $self = shift;
+  my $location = shift;
+  my $device;
 
-	# We've found examples of where devices claim to do transfer
-	# encoding, but wind up sending chunks without chunk size headers.
-	# This code temporarily disables the TE header in the request.
-	#push(@LWP::Protocol::http::EXTRA_SOCK_OPTS, SendTE => 0);
-	my @SOCK_OPTS_Backup = @LWP::Protocol::http::EXTRA_SOCK_OPTS;
-	_addSendTE();
-	my $ua = LWP::UserAgent->new(timeout => 20);
-	my $response = $ua->get($location);
+  # We've found examples of where devices claim to do transfer
+  # encoding, but wind up sending chunks without chunk size headers.
+  # This code temporarily disables the TE header in the request.
+  #push(@LWP::Protocol::http::EXTRA_SOCK_OPTS, SendTE => 0);
+  my @SOCK_OPTS_Backup = @LWP::Protocol::http::EXTRA_SOCK_OPTS;
+  _addSendTE();
+  my $ua = LWP::UserAgent->new(timeout => 20);
+  my $response = $ua->get($location);
 
-	my $base;
-	if ($response->is_success && $response->content ne '') {
-		($device, $base) = $self->parseDeviceDescription($response->content,
-													  {Location => $location},
-													  {ControlPoint => $self});
-	} else {
-		carp('400-URL-Absolute-Error! Location: "'.$location.'", Content: "'.$response->content.'"') if ($response->code == 400);
-		carp("Loading device description failed with error: " . $response->code . " " . $response->message . ' (Location: ' . $location . ')') if ($response->code != 200);
-	}
-	#pop(@LWP::Protocol::http::EXTRA_SOCK_OPTS);
-	@LWP::Protocol::http::EXTRA_SOCK_OPTS = @SOCK_OPTS_Backup;
+  my $base;
+  if ($response->is_success && $response->content ne '') {
+    ($device, $base) = $self->parseDeviceDescription($response->content,
+                            {Location => $location},
+                            {ControlPoint => $self});
+  } else {
+    carp('400-URL-Absolute-Error! Location: "'.$location.'", Content: "'.$response->content.'"') if ($response->code == 400);
+    carp("Loading device description failed with error: " . $response->code . " " . $response->message . ' (Location: ' . $location . ')') if ($response->code != 200);
+  }
+  #pop(@LWP::Protocol::http::EXTRA_SOCK_OPTS);
+  @LWP::Protocol::http::EXTRA_SOCK_OPTS = @SOCK_OPTS_Backup;
 
-	if ($device) {
-		$device->base($base ? $base : $location);
-		if ($response->is_success && $response->content ne '') {
-			$device->descriptionDocument($response->content);
-		}
-	}
+  if ($device) {
+    $device->base($base ? $base : $location);
+    if ($response->is_success && $response->content ne '') {
+      $device->descriptionDocument($response->content);
+    }
+  }
 
-	return $device;
+  return $device;
 }
 
 sub _addSendTE {
-	my %arg = @LWP::Protocol::http::EXTRA_SOCK_OPTS;
-	$arg{SendTE} = 0;
-	@LWP::Protocol::http::EXTRA_SOCK_OPTS = %arg;
+  my %arg = @LWP::Protocol::http::EXTRA_SOCK_OPTS;
+  $arg{SendTE} = 0;
+  @LWP::Protocol::http::EXTRA_SOCK_OPTS = %arg;
 }
 
 sub _getDeviceFromHeaders {
-	my $self = shift;
-	my $headers = shift;
-	my $create = shift;
+  my $self = shift;
+  my $headers = shift;
+  my $create = shift;
 
-	my $location = _firstLocation($headers);
-	my ($udn, $deviceType, $serviceType) = 
-		_parseUSNHeader($headers->header('USN'));
-	my $device = $self->{_devices}->{$udn};
-	if (!defined($device) && $create) {
-		$device = $self->_createDevice($location);
-		if ($device) {
-			$self->{_devices}->{$udn} = $device;
-		}
-	}
-	
-	return $device;
+  my $location = _firstLocation($headers);
+  my ($udn, $deviceType, $serviceType) =
+    _parseUSNHeader($headers->header('USN'));
+  my $device = $self->{_devices}->{$udn};
+  if (!defined($device) && $create) {
+    $device = $self->_createDevice($location);
+    if ($device) {
+      $self->{_devices}->{$udn} = $device;
+    }
+  }
+
+  return $device;
 }
 
 sub _deviceAdded {
-	my $self = shift;
-	my $device = shift;
-	
-	for my $search (values %{$self->{_activeSearches}}) {
-		$search->deviceAdded($device);
-	}
+  my $self = shift;
+  my $device = shift;
+
+  for my $search (values %{$self->{_activeSearches}}) {
+    $search->deviceAdded($device);
+  }
 }
 
 sub _deviceRemoved {
-	my $self = shift;
-	my $device = shift;
+  my $self = shift;
+  my $device = shift;
 
-	for my $search (values %{$self->{_activeSearches}}) {
-		$search->deviceRemoved($device);
-	}
+  for my $search (values %{$self->{_activeSearches}}) {
+    $search->deviceRemoved($device);
+  }
 }
 
-            use Data::Dumper;
+use Data::Dumper;
 sub _receiveSearchResponse {
-	my $self = shift;
-	my $socket = shift;
-	my $buf = '';
+  my $self = shift;
+  my $socket = shift;
+  my $buf = '';
 
-	my $peer = recv($socket, $buf, 2048, 0);
-	my @peerdata = unpack_sockaddr_in($peer);
-	
-	return if (!isUsedOnlyIP(inet_ntoa($peerdata[1])));
-	return if (isIgnoreIP(inet_ntoa($peerdata[1])));
+  my $peer = recv($socket, $buf, 2048, 0);
+  my @peerdata = unpack_sockaddr_in($peer);
 
-	if ($buf !~ /\015?\012\015?\012/) {
-		return;
-	}
+  return if (!isUsedOnlyIP(inet_ntoa($peerdata[1])));
+  return if (isIgnoreIP(inet_ntoa($peerdata[1])));
 
-	$buf =~ s/^(?:\015?\012)+//;  # ignore leading blank lines
-	unless ($buf =~ s/^(\S+)[ \t]+(\S+)[ \t]+(\S+)[^\012]*\012//) {
-		# Bad header
-		return;
-	}
+  if ($buf !~ /\015?\012\015?\012/) {
+    return;
+  }
+
+  $buf =~ s/^(?:\015?\012)+//;  # ignore leading blank lines
+  unless ($buf =~ s/^(\S+)[ \t]+(\S+)[ \t]+(\S+)[^\012]*\012//) {
+    # Bad header
+    return;
+  }
 
         # Basic check to see if the response is actually for a search
         my $found = 0;
         foreach my $searchkey (keys %{$self->{_activeSearches}}) {
             my $search = $self->{_activeSearches}->{$searchkey};
             if ($search->{_type} && $buf =~ $search->{_type}) {
-            	print 'xxxx.xx.xx xx:xx:xx 5: ControlPoint: Accepted Search-Response: "'.$buf.'"'."\n" if ($LogLevel >= 5);
+              print 'xxxx.xx.xx xx:xx:xx 5: ControlPoint: Accepted Search-Response: "'.$buf.'"'."\n" if ($LogLevel >= 5);
                 $found = 1;
                 last;
             }
@@ -483,126 +483,126 @@ sub _receiveSearchResponse {
         if (! $found) {
             print 'xxxx.xx.xx xx:xx:xx 5: ControlPoint: Unknown Search-Response: "'.$buf.'"'."\n" if ($LogLevel >= 5);
             return;
-        } 
+        }
 
-	my $code = $2;
-	if ($code ne '200') {
-		# We expect a success response code
-		return;
-	}
+  my $code = $2;
+  if ($code ne '200') {
+    # We expect a success response code
+    return;
+  }
 
-	my $headers = UPnP::Common::parseHTTPHeaders($buf);
-	my $device = $self->_getDeviceFromHeaders($headers, 1);
-	if ($device) {
-		$self->_deviceAdded($device);
-	}
+  my $headers = UPnP::Common::parseHTTPHeaders($buf);
+  my $device = $self->_getDeviceFromHeaders($headers, 1);
+  if ($device) {
+    $self->_deviceAdded($device);
+  }
 }
 
 sub _receiveSSDPEvent {
-	my $self = shift;
-	my $socket = shift;
-	my $buf = '';
+  my $self = shift;
+  my $socket = shift;
+  my $buf = '';
 
-	my $peer = recv($socket, $buf, 2048, 0);
-	return if (!defined($peer));
-	
-	my @peerdata = unpack_sockaddr_in($peer);
-	return if (!@peerdata);
-	
-	return if (!isUsedOnlyIP(inet_ntoa($peerdata[1])));
-	return if (isIgnoreIP(inet_ntoa($peerdata[1])));
+  my $peer = recv($socket, $buf, 2048, 0);
+  return if (!defined($peer));
 
-	if ($buf !~ /\015?\012\015?\012/) {
-		return;
-	}
+  my @peerdata = unpack_sockaddr_in($peer);
+  return if (!@peerdata);
+
+  return if (!isUsedOnlyIP(inet_ntoa($peerdata[1])));
+  return if (isIgnoreIP(inet_ntoa($peerdata[1])));
+
+  if ($buf !~ /\015?\012\015?\012/) {
+    return;
+  }
 
 
-	$buf =~ s/^(?:\015?\012)+//;  # ignore leading blank lines
-	unless ($buf =~ s/^(\S+)[ \t]+(\S+)(?:[ \t]+(HTTP\/\d+\.\d+))?[^\012]*\012//) {
-		# Bad header
-		return;
-	}
+  $buf =~ s/^(?:\015?\012)+//;  # ignore leading blank lines
+  unless ($buf =~ s/^(\S+)[ \t]+(\S+)(?:[ \t]+(HTTP\/\d+\.\d+))?[^\012]*\012//) {
+    # Bad header
+    return;
+  }
 
         #print Dumper($buf); #ALW uncomment
 
-	my $method = $1;
-	if ($method ne 'NOTIFY') {
-		# We only care about notifications
-		return;
-	}
+  my $method = $1;
+  if ($method ne 'NOTIFY') {
+    # We only care about notifications
+    return;
+  }
 
-	my $headers = UPnP::Common::parseHTTPHeaders($buf);
-	my $eventType = $headers->header('NTS');
-	my $device = $self->_getDeviceFromHeaders($headers, 
-											  $eventType =~ /alive/ ?
-											  1 : 0);
+  my $headers = UPnP::Common::parseHTTPHeaders($buf);
+  my $eventType = $headers->header('NTS');
+  my $device = $self->_getDeviceFromHeaders($headers,
+                        $eventType =~ /alive/ ?
+                        1 : 0);
 
-	if ($device) {
-		if ($eventType =~ /alive/) {
-			$self->_deviceAdded($device);
-		}
-		elsif ($eventType =~ /byebye/) {
-			$self->_deviceRemoved($device);
-			$self->{_devices}->{$device->UDN()} = undef;
-		}
-	}
+  if ($device) {
+    if ($eventType =~ /alive/) {
+      $self->_deviceAdded($device);
+    }
+    elsif ($eventType =~ /byebye/) {
+      $self->_deviceRemoved($device);
+      $self->{_devices}->{$device->UDN()} = undef;
+    }
+  }
 }
 
 sub _parseProperty {
-	my $self = shift;
-	my $element = shift;
-	my ($name, $attrs, $children) = @$element;
-	my ($key, $value);
+  my $self = shift;
+  my $element = shift;
+  my ($name, $attrs, $children) = @$element;
+  my ($key, $value);
 
-	if ($name =~ /property/) {
-		my $childElement = $children->[0];
-		$key = $childElement->[0];
-		$value = $childElement->[2];
-	}
+  if ($name =~ /property/) {
+    my $childElement = $children->[0];
+    $key = $childElement->[0];
+    $value = $childElement->[2];
+  }
 
-	($key, $value);
+  ($key, $value);
 }
 
 
 sub _parsePropertySet {
-	my $self = shift;
-	my $content = shift;
-	my %properties = ();
+  my $self = shift;
+  my $content = shift;
+  my %properties = ();
 
-	my $parser = $self->parser;
-	my $element = $parser->parse($content);
-	if (defined($element) && (ref $element eq 'ARRAY') &&
-		$element->[0] =~ /propertyset/) {
-		my($name, $attrs, $children) = @$element;
-		for my $child (@$children) {
-			my ($key, $value) = $self->_parseProperty($child);
-			if ($key) {
-				$properties{$key} = $value;
-			}
-		}
-	}
+  my $parser = $self->parser;
+  my $element = $parser->parse($content);
+  if (defined($element) && (ref $element eq 'ARRAY') &&
+    $element->[0] =~ /propertyset/) {
+    my($name, $attrs, $children) = @$element;
+    for my $child (@$children) {
+      my ($key, $value) = $self->_parseProperty($child);
+      if ($key) {
+        $properties{$key} = $value;
+      }
+    }
+  }
 
-	return %properties;
+  return %properties;
 }
 
 sub _receiveSubscriptionNotification {
-	my $self = shift;
-	my $connect = shift;
-	
-	my $request = $connect->get_request();
-	if ($request && ($request->method eq 'NOTIFY') &&
-		($request->header('NT') eq 'upnp:event') && 
-		($request->header('NTS') eq 'upnp:propchange')) {
-		my $sid = $request->header('SID');
-		my $subscription = $self->{_subscriptions}->{$sid};
-		if ($subscription) {
-			my %propSet = $self->_parsePropertySet($request->content);
-			$subscription->propChange(%propSet);
-		}
-	}
+  my $self = shift;
+  my $connect = shift;
 
-	$connect->send_response(HTTP::Response->new(HTTP::Status::RC_OK));
-	$connect->close;
+  my $request = $connect->get_request();
+  if ($request && ($request->method eq 'NOTIFY') &&
+    ($request->header('NT') eq 'upnp:event') &&
+    ($request->header('NTS') eq 'upnp:propchange')) {
+    my $sid = $request->header('SID');
+    my $subscription = $self->{_subscriptions}->{$sid};
+    if ($subscription) {
+      my %propSet = $self->_parsePropertySet($request->content);
+      $subscription->propChange(%propSet);
+    }
+  }
+
+  $connect->send_response(HTTP::Response->new(HTTP::Status::RC_OK));
+  $connect->close;
 }
 
 
@@ -619,33 +619,33 @@ use UPnP::Common;
 our @ISA = qw(UPnP::Common::Device);
 
 sub base {
-	my $self = shift;
-	my $base = shift;
+  my $self = shift;
+  my $base = shift;
 
-	if (defined($base)) {
-		$self->{_base} = $base;
-		
-		for my $service ($self->services) {
-			$service->base($base);
-		}
-		
-		for my $device ($self->children) {
-			$device->base($base);
-		}
-	}
+  if (defined($base)) {
+    $self->{_base} = $base;
 
-	return $self->{_base};
+    for my $service ($self->services) {
+      $service->base($base);
+    }
+
+    for my $device ($self->children) {
+      $device->base($base);
+    }
+  }
+
+  return $self->{_base};
 }
 
 sub descriptionDocument {
-	my $self = shift;
-	my $descriptionDocument = shift;
-	
-	if (defined($descriptionDocument)) {
-		$self->{_descriptionDocument} = $descriptionDocument;
-	}
-	
-	return $self->{_descriptionDocument};
+  my $self = shift;
+  my $descriptionDocument = shift;
+
+  if (defined($descriptionDocument)) {
+    $self->{_descriptionDocument} = $descriptionDocument;
+  }
+
+  return $self->{_descriptionDocument};
 }
 
 # ----------------------------------------------------------------------
@@ -666,106 +666,106 @@ use UPnP::Common;
 our @ISA = qw(UPnP::Common::Service);
 
 for my $prop (qw(SCPDURL controlURL eventSubURL)) {
-	$urlProperties{$prop}++;
+  $urlProperties{$prop}++;
 }
 
 sub new {
-	my ($self, %args) = @_;
-	my $class = ref($self) || $self;
+  my ($self, %args) = @_;
+  my $class = ref($self) || $self;
 
     $self = $class->SUPER::new(%args);
-	if ($args{ControlPoint}) {
-		$self->{_controlPoint} = $args{ControlPoint};
-		weaken($self->{_controlPoint});
-	}
+  if ($args{ControlPoint}) {
+    $self->{_controlPoint} = $args{ControlPoint};
+    weaken($self->{_controlPoint});
+  }
 
-	return $self;
+  return $self;
 }
 
 sub AUTOLOAD {
     my $self = shift;
     my $attr = $AUTOLOAD;
     $attr =~ s/.*:://;
-    return if $attr eq 'DESTROY';   
+    return if $attr eq 'DESTROY';
 
-	my $superior = "SUPER::$attr";
-	my $val = $self->$superior(@_);
-	if ($urlProperties{$attr}) {
-		my $base = $self->base;
-		if ($base) {
-			return URI->new_abs($val, $base);
-		}
+  my $superior = "SUPER::$attr";
+  my $val = $self->$superior(@_);
+  if ($urlProperties{$attr}) {
+    my $base = $self->base;
+    if ($base) {
+      return URI->new_abs($val, $base);
+    }
 
-		return URI->new($val);
-	}
+    return URI->new($val);
+  }
 
-	return $val;
+  return $val;
 }
 
 sub controlProxy {
     my $self = shift;
 
-	$self->_loadDescription;
+  $self->_loadDescription;
 
-	return UPnP::ControlPoint::ControlProxy->new($self);
+  return UPnP::ControlPoint::ControlProxy->new($self);
 }
 
 sub queryStateVariable {
     my $self = shift;
-	my $name = shift;
+  my $name = shift;
 
-	$self->_loadDescription;
+  $self->_loadDescription;
 
-	my $var = $self->getStateVariable($name);
-	if (!$var) { croak("No such state variable $name"); }
-	if (!$var->evented) { croak("Variable $name is not evented"); }
+  my $var = $self->getStateVariable($name);
+  if (!$var) { croak("No such state variable $name"); }
+  if (!$var->evented) { croak("Variable $name is not evented"); }
 
         my $result;
         if ($SOAP::Lite::VERSION >= 0.67) {
-        	if ($EnvNamespace eq '<undef>') {
-	            $result = SOAP::Lite
-	                    ->envprefix($EnvPrefix)
-	                    ->uri('urn:schemas-upnp-org:control-1-0')
-	                    ->proxy($self->controlURL)
-	                    ->call('QueryStateVariable' => 
-	                               SOAP::Data->name('varName')
-	                                               ->uri('urn:schemas-upnp-org:control-1-0')
-	                                               ->value($name));
-	        } else {
-	            $result = SOAP::Lite
-	                    ->envprefix($EnvPrefix)
-	                    ->ns($EnvNamespace)
-	                    ->uri('urn:schemas-upnp-org:control-1-0')
-	                    ->proxy($self->controlURL)
-	                    ->call('QueryStateVariable' => 
-	                               SOAP::Data->name('varName')
-	                                               ->uri('urn:schemas-upnp-org:control-1-0')
-	                                               ->value($name));
-	        }
+          if ($EnvNamespace eq '<undef>') {
+              $result = SOAP::Lite
+                      ->envprefix($EnvPrefix)
+                      ->uri('urn:schemas-upnp-org:control-1-0')
+                      ->proxy($self->controlURL)
+                      ->call('QueryStateVariable' =>
+                                 SOAP::Data->name('varName')
+                                                 ->uri('urn:schemas-upnp-org:control-1-0')
+                                                 ->value($name));
+          } else {
+              $result = SOAP::Lite
+                      ->envprefix($EnvPrefix)
+                      ->ns($EnvNamespace)
+                      ->uri('urn:schemas-upnp-org:control-1-0')
+                      ->proxy($self->controlURL)
+                      ->call('QueryStateVariable' =>
+                                 SOAP::Data->name('varName')
+                                                 ->uri('urn:schemas-upnp-org:control-1-0')
+                                                 ->value($name));
+          }
         } else {
             $result = SOAP::Lite
                     ->envprefix($EnvPrefix)
                     ->uri('urn:schemas-upnp-org:control-1-0')
                     ->proxy($self->controlURL)
-                    ->call('QueryStateVariable' => 
+                    ->call('QueryStateVariable' =>
                                SOAP::Data->name('varName')
                                                ->uri('urn:schemas-upnp-org:control-1-0')
                                                ->value($name));
         }
 
-	if ($result->fault()) {
-		carp("Query failed with fault " . $result->faultstring());
-		return undef;
-	}
+  if ($result->fault()) {
+    carp("Query failed with fault " . $result->faultstring());
+    return undef;
+  }
 
-	return $result->result;
+  return $result->result;
 }
 
 sub subscribe {
     my $self = shift;
-	my $callback = shift;
-	my $timeout = shift;
-	my $cp = $self->{_controlPoint};
+  my $callback = shift;
+  my $timeout = shift;
+  my $cp = $self->{_controlPoint};
 
         if (!defined $UPnP::Common::LocalIP) {
             # Find our local IP
@@ -780,113 +780,113 @@ sub subscribe {
             UPnP::Common::setLocalIP($addr);
         }
 
-	if (defined($cp)) {
-		my $url = $self->eventSubURL;
-		my $request = HTTP::Request->new('SUBSCRIBE', 
-										 "$url");
-		$request->header('NT', 'upnp:event');
-		$request->header('Callback', '<' . $cp->subscriptionURL . '>');
-		$request->header('Timeout', 
-						 'Second-' . defined($timeout) ?  $timeout : 'infinite');
-		my $ua = LWP::UserAgent->new(timeout => 20);
-		my $response = $ua->request($request);
+  if (defined($cp)) {
+    my $url = $self->eventSubURL;
+    my $request = HTTP::Request->new('SUBSCRIBE',
+                     "$url");
+    $request->header('NT', 'upnp:event');
+    $request->header('Callback', '<' . $cp->subscriptionURL . '>');
+    $request->header('Timeout',
+             'Second-' . defined($timeout) ?  $timeout : 'infinite');
+    my $ua = LWP::UserAgent->new(timeout => 5);
+    my $response = $ua->request($request);
 
-		if ($response->is_success) {
-			if ($response->code == 200) {
-				my $sid = $response->header('SID');
-				$timeout = $response->header('Timeout');
-				if ($timeout =~ /^Second-(\d+)$/) {
-					$timeout = $1;
-				}
-	
-				my $subscription = UPnP::ControlPoint::Subscription->new(
-											   Service => $self,
-											   Callback => $callback,
-											   SID => $sid,
-											   Timeout => $timeout,
-											   EventSubURL => "$url");
-				$cp->addSubscription($subscription);
-				return $subscription;
-			} else {
-				carp("Subscription request successful but answered with error: " . $response->code . " " . $response->message);
-			}
-		} else {
-			carp("Subscription request failed with error: " . $response->code . " " . $response->message);
-		}
-	}
+    if ($response->is_success) {
+      if ($response->code == 200) {
+        my $sid = $response->header('SID');
+        $timeout = $response->header('Timeout');
+        if ($timeout =~ /^Second-(\d+)$/) {
+          $timeout = $1;
+        }
 
-	return undef;
+        my $subscription = UPnP::ControlPoint::Subscription->new(
+                         Service => $self,
+                         Callback => $callback,
+                         SID => $sid,
+                         Timeout => $timeout,
+                         EventSubURL => "$url");
+        $cp->addSubscription($subscription);
+        return $subscription;
+      } else {
+        croak("Subscription request successful but answered with error: " . $response->code . " " . $response->message);
+      }
+    } else {
+      croak("Subscription request failed with error: " . $response->code . " " . $response->message);
+    }
+  }
+
+  return undef;
 }
 
 sub unsubscribe {
     my $self = shift;
-	my $subscription = shift;
+  my $subscription = shift;
 
-	my $url = $self->eventSubURL;
-	my $request = HTTP::Request->new('UNSUBSCRIBE', 
-									 "$url");
-	$request->header('SID', $subscription->SID);
-	my $ua = LWP::UserAgent->new(timeout => 20);
-	my $response = $ua->request($request);
-	
-	if ($response->is_success) {
-		my $cp = $self->{_controlPoint};
-		
-		if (defined($cp)) {
-			$cp->removeSubscription($subscription);
-		}
-	}
-	else {
-		if ($response->code != 412) {
-			carp("Unsubscription request failed with error: " . 
-				 $response->code . " " . $response->message);
-		}
-	}
+  my $url = $self->eventSubURL;
+  my $request = HTTP::Request->new('UNSUBSCRIBE',
+                   "$url");
+  $request->header('SID', $subscription->SID);
+  my $ua = LWP::UserAgent->new(timeout => 5);
+  my $response = $ua->request($request);
+
+  if ($response->is_success) {
+    my $cp = $self->{_controlPoint};
+
+    if (defined($cp)) {
+      $cp->removeSubscription($subscription);
+    }
+  }
+  else {
+    if ($response->code != 412) {
+      carp("Unsubscription request failed with error: " .
+         $response->code . " " . $response->message);
+    }
+  }
 }
 
 sub _loadDescription {
-	my $self = shift;
+  my $self = shift;
 
-	if ($self->{_loadedDescription}) {
-		return;
-	}
+  if ($self->{_loadedDescription}) {
+    return;
+  }
 
-	my $location = $self->SCPDURL;
-	my $cp = $self->{_controlPoint};
-	unless (defined($location)) {
-		carp("Service doesn't have a SCPD location");
-		return;
-	}
-	unless (defined($cp)) {
-		carp("ControlPoint instance no longer exists");
-		return;
-	}
-	my $parser = $cp->parser;
+  my $location = $self->SCPDURL;
+  my $cp = $self->{_controlPoint};
+  unless (defined($location)) {
+    carp("Service doesn't have a SCPD location");
+    return;
+  }
+  unless (defined($cp)) {
+    carp("ControlPoint instance no longer exists");
+    return;
+  }
+  my $parser = $cp->parser;
 
-	#push(@LWP::Protocol::http::EXTRA_SOCK_OPTS, SendTE => 0);
-	my @SOCK_OPTS_Backup = @LWP::Protocol::http::EXTRA_SOCK_OPTS;
-	_addSendTE();
-	
-	my $ua = LWP::UserAgent->new(timeout => 20);
-	my $response = $ua->get($location);
-	
-	if ($response->is_success) {
-		$self->parseServiceDescription($parser, $response->content);
-	}
-	else {
-		carp("Error loading SCPD document: $!");
-	}
+  #push(@LWP::Protocol::http::EXTRA_SOCK_OPTS, SendTE => 0);
+  my @SOCK_OPTS_Backup = @LWP::Protocol::http::EXTRA_SOCK_OPTS;
+  _addSendTE();
 
-	#pop(@LWP::Protocol::http::EXTRA_SOCK_OPTS);
-	@LWP::Protocol::http::EXTRA_SOCK_OPTS = @SOCK_OPTS_Backup;
+  my $ua = LWP::UserAgent->new(timeout => 20);
+  my $response = $ua->get($location);
 
-	$self->{_loadedDescription} = 1;
+  if ($response->is_success) {
+    $self->parseServiceDescription($parser, $response->content);
+  }
+  else {
+    carp("Error loading SCPD document: $!");
+  }
+
+  #pop(@LWP::Protocol::http::EXTRA_SOCK_OPTS);
+  @LWP::Protocol::http::EXTRA_SOCK_OPTS = @SOCK_OPTS_Backup;
+
+  $self->{_loadedDescription} = 1;
 }
 
 sub _addSendTE {
-	my %arg = @LWP::Protocol::http::EXTRA_SOCK_OPTS;
-	$arg{SendTE} = 0;
-	@LWP::Protocol::http::EXTRA_SOCK_OPTS = %arg;
+  my %arg = @LWP::Protocol::http::EXTRA_SOCK_OPTS;
+  $arg{SendTE} = 0;
+  @LWP::Protocol::http::EXTRA_SOCK_OPTS = %arg;
 }
 
 # ----------------------------------------------------------------------
@@ -905,20 +905,20 @@ sub new {
     my($class, $service) = @_;
 
         if ($SOAP::Lite::VERSION >= 0.67) {
-        	if ($EnvNamespace eq '<undef>') {
-            	return bless {
-	                    _service => $service,
-	                    _proxy => SOAP::Lite->envprefix($EnvPrefix)
-	                 					   ->uri($service->serviceType)->proxy($service->controlURL),
-	            }, $class;
-        	} else {
-	            return bless {
-	                    _service => $service,
-	                    _proxy => SOAP::Lite->envprefix($EnvPrefix)
-	                 					   ->ns($EnvNamespace)
-	                 					   ->uri($service->serviceType)->proxy($service->controlURL),
-	            }, $class;
-	        }
+          if ($EnvNamespace eq '<undef>') {
+              return bless {
+                      _service => $service,
+                      _proxy => SOAP::Lite->envprefix($EnvPrefix)
+                               ->uri($service->serviceType)->proxy($service->controlURL),
+              }, $class;
+          } else {
+              return bless {
+                      _service => $service,
+                      _proxy => SOAP::Lite->envprefix($EnvPrefix)
+                               ->ns($EnvNamespace)
+                               ->uri($service->serviceType)->proxy($service->controlURL),
+              }, $class;
+          }
         } else {
             return bless {
                     _service => $service,
@@ -929,25 +929,25 @@ sub new {
 
 sub AUTOLOAD {
     my $self = shift;
-	my $service = $self->{_service};
-	my $proxy = $self->{_proxy};
+  my $service = $self->{_service};
+  my $proxy = $self->{_proxy};
     my $method = $AUTOLOAD;
     $method =~ s/.*:://;
-    return if $method eq 'DESTROY';   
+    return if $method eq 'DESTROY';
 
-	my $action = $service->getAction($method);
+  my $action = $service->getAction($method);
     croak "invalid method: ->$method()" unless $action;
 
-	my @inArgs;
-	for my $arg ($action->inArguments) {
-		my $val = shift;
-		my $type = $service->getArgumentType($arg);
-		push @inArgs, SOAP::Data->type($type => $val)->name($arg->name);
-	}
-	return UPnP::ControlPoint::ActionResult->new(
-									  Action => $action,
-									  Service => $service,
-									  SOM => $proxy->call($method => @inArgs));
+  my @inArgs;
+  for my $arg ($action->inArguments) {
+    my $val = shift;
+    my $type = $service->getArgumentType($arg);
+    push @inArgs, SOAP::Data->type($type => $val)->name($arg->name);
+  }
+  return UPnP::ControlPoint::ActionResult->new(
+                    Action => $action,
+                    Service => $service,
+                    SOM => $proxy->call($method => @inArgs));
 }
 
 # ----------------------------------------------------------------------
@@ -963,58 +963,58 @@ use Carp;
 use vars qw($AUTOLOAD);
 
 sub new {
-	my($class, %args) = @_;
-	my $som = $args{SOM};
-	
-	my $self = bless {
-		_som => $som,
-	}, $class;
+  my($class, %args) = @_;
+  my $som = $args{SOM};
 
-	unless (defined($som->fault())) {
-		for my $out ($args{Action}->outArguments) {
-			my $name = $out->name;
-			my $data = $som->match('/Envelope/Body//' . $name)->dataof();
-			if ($data) {
-				my $type = $args{Service}->getArgumentType($out);
-				$data->type($type);
-				if ($type eq 'string') {
-					$self->{_results}->{$name} = HTML::Entities::decode(
-															   $data->value);
-				}
-				else {
-					$self->{_results}->{$name} = $data->value;
-				}
-			}
-		}
-	}
+  my $self = bless {
+    _som => $som,
+  }, $class;
 
-	return $self;
+  unless (defined($som->fault())) {
+    for my $out ($args{Action}->outArguments) {
+      my $name = $out->name;
+      my $data = $som->match('/Envelope/Body//' . $name)->dataof();
+      if ($data) {
+        my $type = $args{Service}->getArgumentType($out);
+        $data->type($type);
+        if ($type eq 'string') {
+          $self->{_results}->{$name} = HTML::Entities::decode(
+                                 $data->value);
+        }
+        else {
+          $self->{_results}->{$name} = $data->value;
+        }
+      }
+    }
+  }
+
+  return $self;
 }
 
 sub isSuccessful {
-	my $self = shift;
+  my $self = shift;
 
-	return !defined($self->{_som}->fault());
+  return !defined($self->{_som}->fault());
 }
 
 sub getValue {
-	my $self = shift;
-	my $name = shift;
+  my $self = shift;
+  my $name = shift;
 
-	if (defined($self->{_results})) {
-		return $self->{_results}->{$name};
-	}
+  if (defined($self->{_results})) {
+    return $self->{_results}->{$name};
+  }
 
-	return undef;
+  return undef;
 }
 
 sub AUTOLOAD {
     my $self = shift;
     my $method = $AUTOLOAD;
     $method =~ s/.*:://;
-    return if $method eq 'DESTROY';   
+    return if $method eq 'DESTROY';
 
-	return $self->{_som}->$method(@_);
+  return $self->{_som}->$method(@_);
 }
 
 # ----------------------------------------------------------------------
@@ -1027,51 +1027,51 @@ sub new {
     my($class, %args) = @_;
 
     return bless {
-		_callback => $args{Callback},
-		_type => $args{Type},
-		_udn => $args{UDN},
-		_friendlyName => $args{FriendlyName},
-	}, $class;
+    _callback => $args{Callback},
+    _type => $args{Type},
+    _udn => $args{UDN},
+    _friendlyName => $args{FriendlyName},
+  }, $class;
 }
 
 sub _passesFilter {
-	my $self = shift;
-	my $device = shift;
-	
-	my $type = $self->{_type};
-	my $name = $self->{_friendlyName};
-	my $udn = $self->{_udn};
+  my $self = shift;
+  my $device = shift;
 
-	if ((!defined($type) || ($type eq $device->deviceType()) || 
-		 ($type eq 'ssdp:all')) &&
-		(!defined($name) || ($name eq $device->friendlyName())) &&
-		(!defined($udn) || ($udn eq $device->udn()))) {
-		return 1;
-	}
+  my $type = $self->{_type};
+  my $name = $self->{_friendlyName};
+  my $udn = $self->{_udn};
 
-	return 0;
+  if ((!defined($type) || ($type eq $device->deviceType()) ||
+     ($type eq 'ssdp:all')) &&
+    (!defined($name) || ($name eq $device->friendlyName())) &&
+    (!defined($udn) || ($udn eq $device->udn()))) {
+    return 1;
+  }
+
+  return 0;
 }
 
 sub deviceAdded {
-	my $self = shift;
-	my $device = shift;
+  my $self = shift;
+  my $device = shift;
 
-	if ($self->_passesFilter($device) &&
-		!$self->{_devices}->{$device}) {
-		&{$self->{_callback}}($self, $device, 'deviceAdded');
-		$self->{_devices}->{$device}++;
-	}
+  if ($self->_passesFilter($device) &&
+    !$self->{_devices}->{$device}) {
+    &{$self->{_callback}}($self, $device, 'deviceAdded');
+    $self->{_devices}->{$device}++;
+  }
 }
 
 sub deviceRemoved {
-	my $self = shift;
-	my $device = shift;
+  my $self = shift;
+  my $device = shift;
 
-	if ($self->_passesFilter($device) &&
-		$self->{_devices}->{$device}) {
-		&{$self->{_callback}}($self, $device, 'deviceRemoved');
-		delete $self->{_devices}->{$device};
-	}
+  if ($self->_passesFilter($device) &&
+    $self->{_devices}->{$device}) {
+    &{$self->{_callback}}($self, $device, 'deviceRemoved');
+    delete $self->{_devices}->{$device};
+  }
 }
 
 # ----------------------------------------------------------------------
@@ -1088,90 +1088,96 @@ sub new {
     my($class, %args) = @_;
 
     my $self = bless {
-		_callback => $args{Callback},
-		_sid => $args{SID},
-		_timeout => $args{Timeout},
-		_startTime => Time::HiRes::time(),
-		_eventSubURL => $args{EventSubURL},
-	}, $class;
-	weaken($self->{_service} = $args{Service});
+    _callback => $args{Callback},
+    _sid => $args{SID},
+    _timeout => $args{Timeout},
+    _startTime => Time::HiRes::time(),
+    _eventSubURL => $args{EventSubURL},
+  }, $class;
+  weaken($self->{_service} = $args{Service});
 
-	return $self;
+  return $self;
 }
 
 sub SID {
-	my $self = shift;
+  my $self = shift;
 
-	return $self->{_sid};
+  return $self->{_sid};
 }
 
 sub timeout {
-	my $self = shift;
+  my $self = shift;
 
-	return $self->{_timeout};
+  return $self->{_timeout};
 }
 
 sub expired {
-	my $self = shift;
+  my $self = shift;
 
-	if ($self->{_timeout} eq 'INFINITE') {
-		return 0;
-	}
+  if ($self->{_timeout} eq 'INFINITE') {
+    return 0;
+  }
 
-	my $now = Time::HiRes::time();
-	if ($now - $self->{_startTime} > $self->{_timeout}) {
-		return 1;
-	}
+  my $now = Time::HiRes::time();
+  if ($now - $self->{_startTime} > $self->{_timeout}) {
+    return 1;
+  }
 
-	return 0;
+  return 0;
 }
 
 sub renew {
-	my $self = shift;
-	my $timeout = shift;
+  my $self = shift;
+  my $timeout = shift;
 
-	my $url = $self->{_eventSubURL};
-	my $request = HTTP::Request->new('SUBSCRIBE', 
-									 "$url");
-	$request->header('SID', $self->{_sid});
-	$request->header('Timeout', 
-					 'Second-' . defined($timeout) ? $timeout : 'infinite');
+  my $url = $self->{_eventSubURL};
+  my $request = HTTP::Request->new('SUBSCRIBE',
+                   "$url");
+  $request->header('SID', $self->{_sid});
+  $request->header('Timeout',
+           'Second-' . defined($timeout) ? $timeout : 'infinite');
 
-	my $ua = LWP::UserAgent->new(timeout => 20);
-	my $response = $ua->request($request);
+  my $ua = LWP::UserAgent->new(timeout => 5);
+  my $response = $ua->request($request);
 
-	if ($response->is_success) {
-		$timeout = $response->header('Timeout');
-		if ($timeout =~ /^Second-(\d+)$/) {
-			$timeout = $1;
-		}
+  if ($response->is_success) {
+    if ($response->code == 200) {
+      $timeout = $response->header('Timeout');
+      if ($timeout =~ /^Second-(\d+)$/) {
+        $timeout = $1;
+      }
 
-		$self->{_timeout} = $timeout;
-		$self->{_startTime} = Time::HiRes::time();
-	}
-	else {
-		carp("Renewal of subscription failed with error: " . 
-			 $response->code . " " . $response->message);
-	}
-	
-	return $self;
+      $self->{_timeout} = $timeout;
+      $self->{_startTime} = Time::HiRes::time();
+    }
+    else {
+      croak("Renewal of subscription successful but answered with error: " .
+         $response->code . " " . $response->message);
+    }
+  }
+  else {
+    croak("Renewal of subscription failed with error: " .
+       $response->code . " " . $response->message);
+  }
+
+  return $self;
 }
 
 sub unsubscribe {
-	my $self = shift;
+  my $self = shift;
 
-	if ($self->{_service}) {
-		$self->{_service}->unsubscribe($self);
-	}
+  if ($self->{_service}) {
+    $self->{_service}->unsubscribe($self);
+  }
 }
 
 sub propChange {
-	my $self = shift;
-	my %properties = @_;
+  my $self = shift;
+  my %properties = @_;
 
-	if ($self->{_service}) {
-		&{$self->{_callback}}($self->{_service}, %properties);
-	}
+  if ($self->{_service}) {
+    &{$self->{_callback}}($self->{_service}, %properties);
+  }
 }
 
 1;
@@ -1186,7 +1192,7 @@ UPnP::ControlPoint - A UPnP ControlPoint implementation.
   use UPnP::ControlPoint;
 
   my $cp = UPnP::ControlPoint->new;
-  my $search = $cp->searchByType("urn:schemas-upnp-org:device:TestDevice:1", 
+  my $search = $cp->searchByType("urn:schemas-upnp-org:device:TestDevice:1",
                                  \&callback);
   $cp->handle;
 
@@ -1211,26 +1217,26 @@ aspects of the UPnP architecture from the standpoint of a ControlPoint:
 
 =over 4
 
-=item 1. Discovery 
+=item 1. Discovery
 
 A ControlPoint can be used to actively search for devices and services
 on a local network or listen for announcements as devices enter and
 leave the network. The protocol used for discovery is the Simple
 Service Discovery Protocol (SSDP).
 
-=item 2. Description 
+=item 2. Description
 
 A ControlPoint can get information describing devices and
 services. Devices can be queried for services and vendor-specific
 information. Services can be queried for actions and state variables.
 
-=item 3. Control 
+=item 3. Control
 
 A ControlPoint can invoke actions on services and poll for state
 variable values. Control-related calls are generally made using the
 Simple Object Access Protocol (SOAP).
 
-=item 4. Eventing 
+=item 4. Eventing
 
 ControlPoints can listen for events describing state changes in
 devices and services. Subscription requests and state change events
@@ -1376,27 +1382,27 @@ not be directly instantiated.
 
 =over 4
 
-=item deviceType 
+=item deviceType
 
-=item friendlyName 
+=item friendlyName
 
-=item manufacturer 
+=item manufacturer
 
-=item manufacturerURL 
+=item manufacturerURL
 
-=item modelDescription 
+=item modelDescription
 
-=item modelName 
+=item modelName
 
-=item modelNumber 
+=item modelNumber
 
-=item modelURL 
+=item modelURL
 
-=item serialNumber 
+=item serialNumber
 
 =item UDN
 
-=item presentationURL 
+=item presentationURL
 
 =item UPC
 
@@ -1440,11 +1446,11 @@ not be directly instantiated.
 
 =over 4
 
-=item serviceType 
+=item serviceType
 
-=item serviceId 
+=item serviceId
 
-=item SCPDURL 
+=item SCPDURL
 
 =item controlURL
 
@@ -1510,7 +1516,7 @@ GENA event:
 
     print("Event received for service " . $service->serviceId . "\n");
     while (my ($key, $val) = each %properties) {
-	  print("\tProperty ${key}'s value is " . $val . "\n");
+    print("\tProperty ${key}'s value is " . $val . "\n");
     }
   }
 
@@ -1581,7 +1587,7 @@ The name of the argument returned as a string.
 
 =item relatedStateVariable
 
-The name of the related state variable (which can be used to find the 
+The name of the related state variable (which can be used to find the
 type of the argument) returned as a string.
 
 =back
@@ -1658,7 +1664,7 @@ Was the invocation successful or did it result in a fault.
 =item getValue ( NAME )
 
 Gets the value of an out argument of the action invocation. The
-C<NAME> parameter specifies which out argument value should be 
+C<NAME> parameter specifies which out argument value should be
 returned. The type of the returned value depends on the type
 specified in the service description file.
 
@@ -1695,7 +1701,7 @@ number.
 
 Has the subscription expired yet?
 
-=item renew 
+=item renew
 
 Renews a subscription with the remote service by sending a GENA
 subscription event.

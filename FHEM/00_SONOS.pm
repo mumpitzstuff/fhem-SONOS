@@ -6134,11 +6134,13 @@ sub SONOS_Discover_Callback($$$) {
 
     # GroupRendering-Subscription
     if ($groupRenderingService && (SONOS_Client_Data_Retreive($udn, 'attr', 'minVolume', -1) != -1 || SONOS_Client_Data_Retreive($udn, 'attr', 'maxVolume', -1) != -1 || SONOS_Client_Data_Retreive($udn, 'attr', 'minVolumeHeadphone', -1) != -1 || SONOS_Client_Data_Retreive($udn, 'attr', 'maxVolumeHeadphone', -1)  != -1 )) {
-      $SONOS_GroupRenderingSubscriptions{$udn} = $groupRenderingService->subscribe(\&SONOS_GroupRenderingCallback);
+      eval {
+        $SONOS_GroupRenderingSubscriptions{$udn} = $groupRenderingService->subscribe(\&SONOS_GroupRenderingCallback);
+      };
       if (defined($SONOS_GroupRenderingSubscriptions{$udn})) {
         SONOS_Log undef, 2, 'GroupRendering-Service-subscribing successful with SID='.$SONOS_GroupRenderingSubscriptions{$udn}->SID;
       } else {
-        SONOS_Log undef, 1, 'GroupRendering-Service-subscribing NOT successful';
+        SONOS_Log undef, 1, 'GroupRendering-Service-subscribing NOT successful: '.$@;
       }
     } else {
       undef($SONOS_GroupRenderingSubscriptions{$udn});

@@ -458,32 +458,31 @@ sub _receiveSearchResponse {
     return;
   }
 
-        # Basic check to see if the response is actually for a search
-        my $found = 0;
-        foreach my $searchkey (keys %{$self->{_activeSearches}}) {
-            my $search = $self->{_activeSearches}->{$searchkey};
-            if ($search->{_type} && $buf =~ $search->{_type}) {
-              print 'xxxx.xx.xx xx:xx:xx 5: ControlPoint: Accepted Search-Response: "'.$buf.'"'."\n" if ($LogLevel >= 5);
-                $found = 1;
-                last;
-            }
+  # Basic check to see if the response is actually for a search
+  my $found = 0;
+  foreach my $searchkey (keys %{$self->{_activeSearches}}) {
+    my $search = $self->{_activeSearches}->{$searchkey};
+    if ($search->{_type} && $buf =~ $search->{_type}) {
+      print 'xxxx.xx.xx xx:xx:xx 5: ControlPoint: Accepted Search-Response: "'.$buf.'"'."\n" if ($LogLevel >= 5);
+        $found = 1;
+        last;
+    }
 
-            if ($search->{_udn} && $buf =~ $search->{_udn}) {
-                $found = 1;
-                last;
-            }
+    if ($search->{_udn} && $buf =~ $search->{_udn}) {
+        $found = 1;
+        last;
+    }
 
-            if ($search->{_friendlyName} && $buf =~ $search->{_friendlyName}) {
-                $found = 1;
-                last;
-            }
+    if ($search->{_friendlyName} && $buf =~ $search->{_friendlyName}) {
+        $found = 1;
+        last;
+    }
+  }
 
-        }
-
-        if (! $found) {
-            print 'xxxx.xx.xx xx:xx:xx 5: ControlPoint: Unknown Search-Response: "'.$buf.'"'."\n" if ($LogLevel >= 5);
-            return;
-        }
+  if (! $found) {
+      print 'xxxx.xx.xx xx:xx:xx 5: ControlPoint: Unknown Search-Response: "'.$buf.'"'."\n" if ($LogLevel >= 5);
+      return;
+  }
 
   my $code = $2;
   if ($code ne '200') {
@@ -683,10 +682,10 @@ sub new {
 }
 
 sub AUTOLOAD {
-    my $self = shift;
-    my $attr = $AUTOLOAD;
-    $attr =~ s/.*:://;
-    return if $attr eq 'DESTROY';
+  my $self = shift;
+  my $attr = $AUTOLOAD;
+  $attr =~ s/.*:://;
+  return if $attr eq 'DESTROY';
 
   my $superior = "SUPER::$attr";
   my $val = $self->$superior(@_);
@@ -703,7 +702,7 @@ sub AUTOLOAD {
 }
 
 sub controlProxy {
-    my $self = shift;
+  my $self = shift;
 
   $self->_loadDescription;
 
@@ -711,7 +710,7 @@ sub controlProxy {
 }
 
 sub queryStateVariable {
-    my $self = shift;
+  my $self = shift;
   my $name = shift;
 
   $self->_loadDescription;
@@ -720,38 +719,38 @@ sub queryStateVariable {
   if (!$var) { croak("No such state variable $name"); }
   if (!$var->evented) { croak("Variable $name is not evented"); }
 
-        my $result;
-        if ($SOAP::Lite::VERSION >= 0.67) {
-          if ($EnvNamespace eq '<undef>') {
-              $result = SOAP::Lite
-                      ->envprefix($EnvPrefix)
-                      ->uri('urn:schemas-upnp-org:control-1-0')
-                      ->proxy($self->controlURL)
-                      ->call('QueryStateVariable' =>
-                                 SOAP::Data->name('varName')
-                                                 ->uri('urn:schemas-upnp-org:control-1-0')
-                                                 ->value($name));
-          } else {
-              $result = SOAP::Lite
-                      ->envprefix($EnvPrefix)
-                      ->ns($EnvNamespace)
-                      ->uri('urn:schemas-upnp-org:control-1-0')
-                      ->proxy($self->controlURL)
-                      ->call('QueryStateVariable' =>
-                                 SOAP::Data->name('varName')
-                                                 ->uri('urn:schemas-upnp-org:control-1-0')
-                                                 ->value($name));
-          }
-        } else {
-            $result = SOAP::Lite
-                    ->envprefix($EnvPrefix)
-                    ->uri('urn:schemas-upnp-org:control-1-0')
-                    ->proxy($self->controlURL)
-                    ->call('QueryStateVariable' =>
-                               SOAP::Data->name('varName')
-                                               ->uri('urn:schemas-upnp-org:control-1-0')
-                                               ->value($name));
-        }
+  my $result;
+  if ($SOAP::Lite::VERSION >= 0.67) {
+    if ($EnvNamespace eq '<undef>') {
+        $result = SOAP::Lite
+                ->envprefix($EnvPrefix)
+                ->uri('urn:schemas-upnp-org:control-1-0')
+                ->proxy($self->controlURL)
+                ->call('QueryStateVariable' =>
+                           SOAP::Data->name('varName')
+                                           ->uri('urn:schemas-upnp-org:control-1-0')
+                                           ->value($name));
+    } else {
+        $result = SOAP::Lite
+                ->envprefix($EnvPrefix)
+                ->ns($EnvNamespace)
+                ->uri('urn:schemas-upnp-org:control-1-0')
+                ->proxy($self->controlURL)
+                ->call('QueryStateVariable' =>
+                           SOAP::Data->name('varName')
+                                           ->uri('urn:schemas-upnp-org:control-1-0')
+                                           ->value($name));
+    }
+  } else {
+      $result = SOAP::Lite
+              ->envprefix($EnvPrefix)
+              ->uri('urn:schemas-upnp-org:control-1-0')
+              ->proxy($self->controlURL)
+              ->call('QueryStateVariable' =>
+                         SOAP::Data->name('varName')
+                                         ->uri('urn:schemas-upnp-org:control-1-0')
+                                         ->value($name));
+  }
 
   if ($result->fault()) {
     carp("Query failed with fault " . $result->faultstring());
@@ -762,7 +761,7 @@ sub queryStateVariable {
 }
 
 sub subscribe {
-    my $self = shift;
+  my $self = shift;
   my $callback = shift;
   my $timeout = shift;
   my $cp = $self->{_controlPoint};
@@ -808,10 +807,10 @@ sub subscribe {
         $cp->addSubscription($subscription);
         return $subscription;
       } else {
-        croak("Subscription request successful but answered with error: " . $response->code . " " . $response->message);
+        carp("Subscription request successful but answered with error: " . $response->code . " " . $response->message);
       }
     } else {
-      croak("Subscription request failed with error: " . $response->code . " " . $response->message);
+      carp("Subscription request failed with error: " . $response->code . " " . $response->message);
     }
   }
 
@@ -819,7 +818,7 @@ sub subscribe {
 }
 
 sub unsubscribe {
-    my $self = shift;
+  my $self = shift;
   my $subscription = shift;
 
   my $url = $self->eventSubURL;
@@ -902,33 +901,33 @@ use vars qw($AUTOLOAD);
 
 
 sub new {
-    my($class, $service) = @_;
+  my($class, $service) = @_;
 
-        if ($SOAP::Lite::VERSION >= 0.67) {
-          if ($EnvNamespace eq '<undef>') {
-              return bless {
-                      _service => $service,
-                      _proxy => SOAP::Lite->envprefix($EnvPrefix)
-                               ->uri($service->serviceType)->proxy($service->controlURL),
-              }, $class;
-          } else {
-              return bless {
-                      _service => $service,
-                      _proxy => SOAP::Lite->envprefix($EnvPrefix)
-                               ->ns($EnvNamespace)
-                               ->uri($service->serviceType)->proxy($service->controlURL),
-              }, $class;
-          }
-        } else {
-            return bless {
-                    _service => $service,
-                    _proxy => SOAP::Lite->envprefix($EnvPrefix)->uri($service->serviceType)->proxy($service->controlURL),
-            }, $class;
-        }
+  if ($SOAP::Lite::VERSION >= 0.67) {
+    if ($EnvNamespace eq '<undef>') {
+        return bless {
+                _service => $service,
+                _proxy => SOAP::Lite->envprefix($EnvPrefix)
+                         ->uri($service->serviceType)->proxy($service->controlURL),
+        }, $class;
+    } else {
+        return bless {
+                _service => $service,
+                _proxy => SOAP::Lite->envprefix($EnvPrefix)
+                         ->ns($EnvNamespace)
+                         ->uri($service->serviceType)->proxy($service->controlURL),
+        }, $class;
+    }
+  } else {
+      return bless {
+              _service => $service,
+              _proxy => SOAP::Lite->envprefix($EnvPrefix)->uri($service->serviceType)->proxy($service->controlURL),
+      }, $class;
+  }
 }
 
 sub AUTOLOAD {
-    my $self = shift;
+  my $self = shift;
   my $service = $self->{_service};
   my $proxy = $self->{_proxy};
     my $method = $AUTOLOAD;
@@ -1151,12 +1150,12 @@ sub renew {
       $self->{_startTime} = Time::HiRes::time();
     }
     else {
-      croak("Renewal of subscription successful but answered with error: " .
+      carp("Renewal of subscription successful but answered with error: " .
          $response->code . " " . $response->message);
     }
   }
   else {
-    croak("Renewal of subscription failed with error: " .
+    carp("Renewal of subscription failed with error: " .
        $response->code . " " . $response->message);
   }
 

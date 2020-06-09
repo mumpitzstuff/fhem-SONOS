@@ -4175,14 +4175,13 @@ sub SONOS_Discover_DoQueue($) {
 ########################################################################################
 sub SONOS_ProcessRenew($$$) {
   my ($udn, $subscriptionName, $subscriptionHash) = @_;
-
+  
   if (defined($subscriptionHash->{$udn}) && (Time::HiRes::time() - $subscriptionHash->{$udn}->{_startTime} > $SONOS_SUBSCRIPTIONSRENEWAL)) {
-    eval {
-      $SIG{__WARN__} = sub { $_ = shift; };
+    $SIG{__WARN__} = sub { $@ = shift; };
 
-      $subscriptionHash->{$udn}->renew();
-      SONOS_Log $udn, 3, $subscriptionName.'-Subscription for ZonePlayer "'.$udn.'" has expired and is now renewed.';
-    };
+    $subscriptionHash->{$udn}->renew();
+    SONOS_Log $udn, 3, $subscriptionName.'-Subscription for ZonePlayer "'.$udn.'" has expired and is now renewed.';
+
     if ($@) {
       SONOS_Log $udn, 3, 'Error! '.$subscriptionName.'-Subscription for ZonePlayer "'.$udn.'" has expired and could not be renewed: '.$@;
 
@@ -4199,6 +4198,8 @@ sub SONOS_ProcessRenew($$$) {
         # Discovery neu anstarten, falls der Player irgendwie doch noch erreichbar sein sollte...
         $SONOS_Search = $SONOS_Controlpoint->searchByType('urn:schemas-upnp-org:device:ZonePlayer:1', \&SONOS_Discover_Callback);
       }
+      
+      undef($@);
     }
   }
 }
@@ -5768,12 +5769,14 @@ sub SONOS_Discover_Callback($$$) {
 
   if ($action eq 'deviceAdded') {
     my $descriptionDocument;
-    eval {
-      $descriptionDocument = $device->descriptionDocument();
-    };
+    $SIG{__WARN__} = sub { $@ = shift; };
+      
+    $descriptionDocument = $device->descriptionDocument();
+
     if ($@) {
       # Das Descriptiondocument konnte nicht abgefragt werden
       SONOS_Log undef, 2, 'Discover-Event: Wrong deviceType "'.$device->deviceType().'" received! Detected while trying to download the Description-Document from Player.';
+      undef($@);
       return;
     }
 
@@ -6053,40 +6056,42 @@ sub SONOS_Discover_Callback($$$) {
     # Abspielreadings vorab ermitteln, um darauf prüfen zu können...
     if (!$isZoneBridge) {
       if (SONOS_CheckProxyObject($udn, $SONOS_AVTransportControlProxy{$udn})) {
-        eval {
-          my $result = $SONOS_AVTransportControlProxy{$udn}->GetTransportInfo(0);
-          SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'transportState', $result->getValue('CurrentTransportState'));
+        $SIG{__WARN__} = sub { $@ = shift; };
+        
+        my $result = $SONOS_AVTransportControlProxy{$udn}->GetTransportInfo(0);
+        SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'transportState', $result->getValue('CurrentTransportState'));
 
-          $result = $SONOS_AVTransportControlProxy{$udn}->GetPositionInfo(0);
-          my $tmp = $result->getValue('TrackURI');
-          $tmp =~ s/&apos;/'/gi;
-          SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrackURI', $tmp);
-          my ($trackProvider, $trackProviderRoundURL, $trackProviderQuadraticURL) = SONOS_GetTrackProvider($result->getValue('TrackURI'));
-          SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrackProvider', $trackProvider);
-          SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrackProviderIconRoundURL', $trackProviderRoundURL);
-          SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrackProviderIconQuadraticURL', $trackProviderQuadraticURL);
-          SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrackDuration', $result->getValue('TrackDuration'));
-          SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrackDurationSec', SONOS_GetTimeSeconds($result->getValue('TrackDuration')));
+        $result = $SONOS_AVTransportControlProxy{$udn}->GetPositionInfo(0);
+        my $tmp = $result->getValue('TrackURI');
+        $tmp =~ s/&apos;/'/gi;
+        SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrackURI', $tmp);
+        my ($trackProvider, $trackProviderRoundURL, $trackProviderQuadraticURL) = SONOS_GetTrackProvider($result->getValue('TrackURI'));
+        SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrackProvider', $trackProvider);
+        SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrackProviderIconRoundURL', $trackProviderRoundURL);
+        SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrackProviderIconQuadraticURL', $trackProviderQuadraticURL);
+        SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrackDuration', $result->getValue('TrackDuration'));
+        SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrackDurationSec', SONOS_GetTimeSeconds($result->getValue('TrackDuration')));
 
-          my $modus = 'ReadingsBulkUpdate'.((SONOS_Client_Data_Retreive($udn, 'reading', 'currentStreamAudio', 0)) ? 'IfChanged' : '');
+        my $modus = 'ReadingsBulkUpdate'.((SONOS_Client_Data_Retreive($udn, 'reading', 'currentStreamAudio', 0)) ? 'IfChanged' : '');
 
-          my $trackPosition = $result->getValue('RelTime');
-          if ($trackPosition !~ /\d+:\d+:\d+/i) { # e.g. NOT_IMPLEMENTED
-            $trackPosition = '0:00:00';
-          }
-          SONOS_Client_Data_Refresh($modus, $udn, 'currentTrackPosition', $trackPosition);
-          SONOS_Client_Data_Refresh($modus, $udn, 'currentTrackPositionSec', SONOS_GetTimeSeconds($trackPosition));
+        my $trackPosition = $result->getValue('RelTime');
+        if ($trackPosition !~ /\d+:\d+:\d+/i) { # e.g. NOT_IMPLEMENTED
+          $trackPosition = '0:00:00';
+        }
+        SONOS_Client_Data_Refresh($modus, $udn, 'currentTrackPosition', $trackPosition);
+        SONOS_Client_Data_Refresh($modus, $udn, 'currentTrackPositionSec', SONOS_GetTimeSeconds($trackPosition));
 
-          SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrack', $result->getValue('Track'));
+        SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentTrack', $result->getValue('Track'));
 
-          $result = $SONOS_AVTransportControlProxy{$udn}->GetMediaInfo(0);
-          SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'numberOfTracks', $result->getValue('NrTracks'));
-          my $stream = ($result->getValue('CurrentURI') =~ m/^x-(sonosapi|rincon)-(stream|mp3radio):.*?/);
-          SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentStreamAudio', $stream);
-          SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentNormalAudio', !$stream);
-        };
+        $result = $SONOS_AVTransportControlProxy{$udn}->GetMediaInfo(0);
+        SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'numberOfTracks', $result->getValue('NrTracks'));
+        my $stream = ($result->getValue('CurrentURI') =~ m/^x-(sonosapi|rincon)-(stream|mp3radio):.*?/);
+        SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentStreamAudio', $stream);
+        SONOS_Client_Data_Refresh('ReadingsBulkUpdateIfChanged', $udn, 'currentNormalAudio', !$stream);
+
         if ($@) {
           SONOS_Log undef, 1, 'Couldn\'t retrieve Current Transportsettings during Discovery: '. $@;
+          undef($@);
         }
       }
     }
@@ -6102,11 +6107,17 @@ sub SONOS_Discover_Callback($$$) {
     # AVTransport-Subscription
     if (!$isZoneBridge) {
       if ($transportService) {
+        $SIG{__WARN__} = sub { $@ = shift; };
+        
         $SONOS_TransportSubscriptions{$udn} = $transportService->subscribe(\&SONOS_TransportCallback);
         if (defined($SONOS_TransportSubscriptions{$udn})) {
           SONOS_Log undef, 2, 'Service-subscribing successful with SID='.$SONOS_TransportSubscriptions{$udn}->SID;
         } else {
           SONOS_Log undef, 1, 'Service-subscribing NOT successful';
+        }
+        if ($@) {
+          SONOS_Log undef, 1, 'Service-Service-subscribing NOT successful: '.$@;
+          undef($@);
         }
       } else {
         undef($SONOS_TransportSubscriptions{$udn});
@@ -6119,28 +6130,39 @@ sub SONOS_Discover_Callback($$$) {
                 || SONOS_Client_Data_Retreive($udn, 'attr', 'maxVolume', -1) != -1
                 || SONOS_Client_Data_Retreive($udn, 'attr', 'minVolumeHeadphone', -1) != -1
                 || SONOS_Client_Data_Retreive($udn, 'attr', 'maxVolumeHeadphone', -1) != -1)) {
-      eval {
-        $SONOS_RenderingSubscriptions{$udn} = $renderingService->subscribe(\&SONOS_RenderingCallback);
-      };
+      $SIG{__WARN__} = sub { $@ = shift; };
+      
+      $SONOS_RenderingSubscriptions{$udn} = $renderingService->subscribe(\&SONOS_RenderingCallback);
       $SONOS_ButtonPressQueue{$udn} = Thread::Queue->new();
       if (defined($SONOS_RenderingSubscriptions{$udn})) {
         SONOS_Log undef, 2, 'Rendering-Service-subscribing successful with SID='.$SONOS_RenderingSubscriptions{$udn}->SID;
       } else {
-        SONOS_Log undef, 1, 'Rendering-Service-subscribing NOT successful: '.$@;
+        SONOS_Log undef, 1, 'Rendering-Service-subscribing NOT successful';
+      }
+      if ($@) {
+        SONOS_Log undef, 1, 'Rendering-Service-Service-subscribing NOT successful: '.$@;
+        undef($@);
       }
     } else {
       undef($SONOS_RenderingSubscriptions{$udn});
     }
 
     # GroupRendering-Subscription
-    if ($groupRenderingService && (SONOS_Client_Data_Retreive($udn, 'attr', 'minVolume', -1) != -1 || SONOS_Client_Data_Retreive($udn, 'attr', 'maxVolume', -1) != -1 || SONOS_Client_Data_Retreive($udn, 'attr', 'minVolumeHeadphone', -1) != -1 || SONOS_Client_Data_Retreive($udn, 'attr', 'maxVolumeHeadphone', -1)  != -1 )) {
-      eval {
-        $SONOS_GroupRenderingSubscriptions{$udn} = $groupRenderingService->subscribe(\&SONOS_GroupRenderingCallback);
-      };
+    if ($groupRenderingService && (SONOS_Client_Data_Retreive($udn, 'attr', 'minVolume', -1) != -1 || 
+                                   SONOS_Client_Data_Retreive($udn, 'attr', 'maxVolume', -1) != -1 || 
+                                   SONOS_Client_Data_Retreive($udn, 'attr', 'minVolumeHeadphone', -1) != -1 || 
+                                   SONOS_Client_Data_Retreive($udn, 'attr', 'maxVolumeHeadphone', -1)  != -1 )) {
+      $SIG{__WARN__} = sub { $@ = shift; };
+      
+      $SONOS_GroupRenderingSubscriptions{$udn} = $groupRenderingService->subscribe(\&SONOS_GroupRenderingCallback);
       if (defined($SONOS_GroupRenderingSubscriptions{$udn})) {
         SONOS_Log undef, 2, 'GroupRendering-Service-subscribing successful with SID='.$SONOS_GroupRenderingSubscriptions{$udn}->SID;
       } else {
-        SONOS_Log undef, 1, 'GroupRendering-Service-subscribing NOT successful: '.$@;
+        SONOS_Log undef, 1, 'GroupRendering-Service-subscribing NOT successful';
+      }
+      if ($@) {
+        SONOS_Log undef, 1, 'GroupRendering-Service-Service-subscribing NOT successful: '.$@;
+        undef($@);
       }
     } else {
       undef($SONOS_GroupRenderingSubscriptions{$udn});
@@ -6148,16 +6170,17 @@ sub SONOS_Discover_Callback($$$) {
 
     # ContentDirectory-Subscription
     if ($contentDirectoryService) {
-      eval {
-        $SONOS_ContentDirectorySubscriptions{$udn} = $contentDirectoryService->subscribe(\&SONOS_ContentDirectoryCallback);
-        if (defined($SONOS_ContentDirectorySubscriptions{$udn})) {
-          SONOS_Log undef, 2, 'ContentDirectory-Service-subscribing successful with SID='.$SONOS_ContentDirectorySubscriptions{$udn}->SID;
-        } else {
-          SONOS_Log undef, 1, 'ContentDirectory-Service-subscribing NOT successful';
-        }
-      };
+      $SIG{__WARN__} = sub { $@ = shift; };
+      
+      $SONOS_ContentDirectorySubscriptions{$udn} = $contentDirectoryService->subscribe(\&SONOS_ContentDirectoryCallback);
+      if (defined($SONOS_ContentDirectorySubscriptions{$udn})) {
+        SONOS_Log undef, 2, 'ContentDirectory-Service-subscribing successful with SID='.$SONOS_ContentDirectorySubscriptions{$udn}->SID;
+      } else {
+        SONOS_Log undef, 1, 'ContentDirectory-Service-subscribing NOT successful';
+      }
       if ($@) {
-        SONOS_Log undef, 1, 'ContentDirectory-Service-subscribing NOT successful: '.$@;
+        SONOS_Log undef, 1, 'ContentDirectory-Service-Service-subscribing NOT successful: '.$@;
+        undef($@);
       }
     } else {
       undef($SONOS_ContentDirectorySubscriptions{$udn});
@@ -6165,16 +6188,17 @@ sub SONOS_Discover_Callback($$$) {
 
     # Alarm-Subscription
     if ($alarmService && (SONOS_Client_Data_Retreive($udn, 'attr', 'getAlarms', 0) != 0)) {
-      eval {
-        $SONOS_AlarmSubscriptions{$udn} = $alarmService->subscribe(\&SONOS_AlarmCallback);
-        if (defined($SONOS_AlarmSubscriptions{$udn})) {
-          SONOS_Log undef, 2, 'Alarm-Service-subscribing successful with SID='.$SONOS_AlarmSubscriptions{$udn}->SID;
-        } else {
-          SONOS_Log undef, 1, 'Alarm-Service-subscribing NOT successful';
-        }
-      };
+      $SIG{__WARN__} = sub { $@ = shift; };
+      
+      $SONOS_AlarmSubscriptions{$udn} = $alarmService->subscribe(\&SONOS_AlarmCallback);
+      if (defined($SONOS_AlarmSubscriptions{$udn})) {
+        SONOS_Log undef, 2, 'Alarm-Service-subscribing successful with SID='.$SONOS_AlarmSubscriptions{$udn}->SID;
+      } else {
+        SONOS_Log undef, 1, 'Alarm-Service-subscribing NOT successful';
+      }
       if ($@) {
         SONOS_Log undef, 1, 'Alarm-Service-Service-subscribing NOT successful: '.$@;
+        undef($@);
       }
     } else {
       undef($SONOS_AlarmSubscriptions{$udn});
@@ -6182,16 +6206,17 @@ sub SONOS_Discover_Callback($$$) {
 
     # ZoneGroupTopology-Subscription
     if ($zoneGroupTopologyService) {
-      eval {
-        $SONOS_ZoneGroupTopologySubscriptions{$udn} = $zoneGroupTopologyService->subscribe(\&SONOS_ZoneGroupTopologyCallback);
-        if (defined($SONOS_ZoneGroupTopologySubscriptions{$udn})) {
-          SONOS_Log undef, 2, 'ZoneGroupTopology-Service-subscribing successful with SID='.$SONOS_ZoneGroupTopologySubscriptions{$udn}->SID;
-        } else {
-          SONOS_Log undef, 1, 'ZoneGroupTopology-Service-subscribing NOT successful';
-        }
-      };
+      $SIG{__WARN__} = sub { $@ = shift; };
+      
+      $SONOS_ZoneGroupTopologySubscriptions{$udn} = $zoneGroupTopologyService->subscribe(\&SONOS_ZoneGroupTopologyCallback);
+      if (defined($SONOS_ZoneGroupTopologySubscriptions{$udn})) {
+        SONOS_Log undef, 2, 'ZoneGroupTopology-Service-subscribing successful with SID='.$SONOS_ZoneGroupTopologySubscriptions{$udn}->SID;
+      } else {
+        SONOS_Log undef, 1, 'ZoneGroupTopology-Service-subscribing NOT successful';
+      }
       if ($@) {
-        SONOS_Log undef, 1, 'ZoneGroupTopology-Service-subscribing NOT successful: '.$@;
+        SONOS_Log undef, 1, 'ZoneGroupTopology-Service-Service-subscribing NOT successful: '.$@;
+        undef($@);
       }
     } else {
       undef($SONOS_ZoneGroupTopologySubscriptions{$udn});
@@ -6199,16 +6224,17 @@ sub SONOS_Discover_Callback($$$) {
 
     # DeviceProperties-Subscription
     if ($devicePropertiesService) {
-      eval {
-        $SONOS_DevicePropertiesSubscriptions{$udn} = $devicePropertiesService->subscribe(\&SONOS_DevicePropertiesCallback);
-        if (defined($SONOS_DevicePropertiesSubscriptions{$udn})) {
-          SONOS_Log undef, 2, 'DeviceProperties-Service-subscribing successful with SID='.$SONOS_DevicePropertiesSubscriptions{$udn}->SID;
-        } else {
-          SONOS_Log undef, 1, 'DeviceProperties-Service-subscribing NOT successful';
-        }
-      };
+      $SIG{__WARN__} = sub { $@ = shift; };
+      
+      $SONOS_DevicePropertiesSubscriptions{$udn} = $devicePropertiesService->subscribe(\&SONOS_DevicePropertiesCallback);
+      if (defined($SONOS_DevicePropertiesSubscriptions{$udn})) {
+        SONOS_Log undef, 2, 'DeviceProperties-Service-subscribing successful with SID='.$SONOS_DevicePropertiesSubscriptions{$udn}->SID;
+      } else {
+        SONOS_Log undef, 1, 'DeviceProperties-Service-subscribing NOT successful';
+      }
       if ($@) {
-        SONOS_Log undef, 1, 'DeviceProperties-Service-subscribing NOT successful: '.$@;
+        SONOS_Log undef, 1, 'DeviceProperties-Service-Service-subscribing NOT successful: '.$@;
+        undef($@);
       }
     } else {
       undef($SONOS_DevicePropertiesSubscriptions{$udn});
@@ -6216,17 +6242,18 @@ sub SONOS_Discover_Callback($$$) {
 
     # AudioIn-Subscription
     if ($audioInService) {
-      eval {
-        $SONOS_AudioInSubscriptions{$udn} = $audioInService->subscribe(\&SONOS_AudioInCallback);
-        if (defined($SONOS_AudioInSubscriptions{$udn})) {
-          SONOS_Log undef, 2, 'AudioIn-Service-subscribing successful with SID='.$SONOS_AudioInSubscriptions{$udn}->SID;
-        } else {
-          SONOS_Log undef, 1, 'AudioIn-Service-subscribing NOT successful';
-          delete($SONOS_AudioInSubscriptions{$udn});
-        }
-      };
+      $SIG{__WARN__} = sub { $@ = shift; };
+
+      $SONOS_AudioInSubscriptions{$udn} = $audioInService->subscribe(\&SONOS_AudioInCallback);
+      if (defined($SONOS_AudioInSubscriptions{$udn})) {
+        SONOS_Log undef, 2, 'AudioIn-Service-subscribing successful with SID='.$SONOS_AudioInSubscriptions{$udn}->SID;
+      } else {
+        SONOS_Log undef, 1, 'AudioIn-Service-subscribing NOT successful';
+        delete($SONOS_AudioInSubscriptions{$udn});
+      }
       if ($@) {
         SONOS_Log undef, 1, 'AudioIn-Service-Service-subscribing NOT successful: '.$@;
+        undef($@);
       }
     } else {
       undef($SONOS_AudioInSubscriptions{$udn});
@@ -6234,17 +6261,18 @@ sub SONOS_Discover_Callback($$$) {
 
     # MusicServices-Subscription
     if ($musicServicesService) {
-      eval {
-        $SONOS_MusicServicesSubscriptions{$udn} = $musicServicesService->subscribe(\&SONOS_MusicServicesCallback);
-        if (defined($SONOS_MusicServicesSubscriptions{$udn})) {
-          SONOS_Log undef, 2, 'MusicServices-Service-subscribing successful with SID='.$SONOS_MusicServicesSubscriptions{$udn}->SID;
-        } else {
-          SONOS_Log undef, 1, 'MusicServices-Service-subscribing NOT successful';
-          delete($SONOS_MusicServicesSubscriptions{$udn});
-        }
-      };
+      $SIG{__WARN__} = sub { $@ = shift; };
+
+      $SONOS_MusicServicesSubscriptions{$udn} = $musicServicesService->subscribe(\&SONOS_MusicServicesCallback);
+      if (defined($SONOS_MusicServicesSubscriptions{$udn})) {
+        SONOS_Log undef, 2, 'MusicServices-Service-subscribing successful with SID='.$SONOS_MusicServicesSubscriptions{$udn}->SID;
+      } else {
+        SONOS_Log undef, 1, 'MusicServices-Service-subscribing NOT successful';
+        delete($SONOS_MusicServicesSubscriptions{$udn});
+      }
       if ($@) {
         SONOS_Log undef, 1, 'MusicServices-Service-Service-subscribing NOT successful: '.$@;
+        undef($@);
       }
     } else {
       undef($SONOS_MusicServicesSubscriptions{$udn});
@@ -9899,7 +9927,7 @@ if (defined($SONOS_ListenPort)) {
       socket($sock, AF_INET, SOCK_STREAM, getprotobyname('tcp')) or die "Could not create socket: $!";
       setsockopt($sock, SOL_SOCKET, SO_LINGER, pack("ii", 1, 0)) or die "Setsockopt failed: $!";
       setsockopt($sock, SOL_SOCKET, SO_REUSEADDR, 1) or die "Setsockopt failed: $!";
-      setsockopt($sock, SOL_SOCKET, SO_REUSEPORT, 1) if (defined(&SO_REUSEPORT)) or die "Setsockopt failed: $!";
+      setsockopt($sock, SOL_SOCKET, SO_REUSEPORT, 1) if (defined(&SO_REUSEPORT));
       bind($sock, sockaddr_in($SONOS_ListenPort, INADDR_ANY)) or die "Bind failed: $!";
       listen($sock, 10);
     };
